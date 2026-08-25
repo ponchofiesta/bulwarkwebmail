@@ -1,7 +1,7 @@
-import type { NextConfig } from "next";
-import createNextIntlPlugin from "next-intl/plugin";
 import { execSync } from "child_process";
 import { readFileSync } from "fs";
+import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
 import { join } from "path";
 
 // Prefer an explicit build arg (passed in by CI / Docker, where .git is
@@ -22,7 +22,10 @@ if (/^[0-9a-f]{40}$/i.test(gitCommitHash)) {
 
 let appVersion = "0.0.0";
 try {
-  appVersion = readFileSync(join(import.meta.dirname, "VERSION"), "utf-8").trim();
+  appVersion = readFileSync(
+    join(import.meta.dirname, "VERSION"),
+    "utf-8",
+  ).trim();
 } catch {
   // VERSION file not found
 }
@@ -34,13 +37,13 @@ const rawBasePath = process.env.NEXT_PUBLIC_BASE_PATH?.trim() ?? "";
 const basePath = rawBasePath.replace(/\/+$/, "");
 if (basePath && !basePath.startsWith("/")) {
   throw new Error(
-    `NEXT_PUBLIC_BASE_PATH must start with "/" (got: ${JSON.stringify(rawBasePath)})`
+    `NEXT_PUBLIC_BASE_PATH must start with "/" (got: ${JSON.stringify(rawBasePath)})`,
   );
 }
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  allowedDevOrigins: ["192.168.1.51"],
+  allowedDevOrigins: ["192.168.1.51", "192.168.178.64"],
   basePath: basePath || undefined,
   // esbuild ships native binaries + a README the bundler can't parse; load
   // it from node_modules at runtime instead of trying to bundle it. Used by

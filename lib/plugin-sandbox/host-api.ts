@@ -109,6 +109,10 @@ const PERM_PER_METHOD: Record<string, Permission | null> = {
   'contact.update': 'contacts:write',
   'contact.create': 'contacts:write',
   'contact.search': 'contacts:read',
+  'contact.list': 'contacts:read',
+  'contact.delete': 'contacts:write',
+  'addressbook.list': 'contacts:read',
+  'addressbook.create': 'contacts:write',
   // user
   'user.getAccounts': 'account:read',
   'user.getIdentities': 'identity:read',
@@ -587,6 +591,38 @@ async function doContactCreate(contact: ContactCard): Promise<ContactCard> {
   }
 
   return await client.createContact(contact);
+}
+
+async function doContactList(addressBookId?: string): Promise<ContactCard[]> {
+  const { client } = useAuthStore.getState();
+  if (!client) {
+    throw new Error('contact.list: no active session');
+  }
+  return await client.getContacts(addressBookId);
+}
+
+async function doContactDelete(contactId: string): Promise<void> {
+  const { client } = useAuthStore.getState();
+  if (!client) {
+    throw new Error('contact.delete: no active session');
+  }
+  await client.deleteContact(contactId);
+}
+
+async function doAddressBookList() {
+  const { client } = useAuthStore.getState();
+  if (!client) {
+    throw new Error('addressbook.list: no active session');
+  }
+  return await client.getAddressBooks();
+}
+
+async function doAddressBookCreate(name: string) {
+  const { client } = useAuthStore.getState();
+  if (!client) {
+    throw new Error('addressbook.create: no active session');
+  }
+  return await client.createAddressBook(name);
 }
 
 // ─── Crypto (privileged tier) ─────────────────────────────────────────────
@@ -1212,6 +1248,10 @@ export async function dispatchApiCall(
     case 'contact.update': return doContactUpdate(args[0] as string, args[1] as Partial<ContactCard>);
     case 'contact.create': return doContactCreate(args[0] as ContactCard);
     case 'contact.search': return doContactSearch(args[0] as string);
+    case 'contact.list': return doContactList(args[0] as string | undefined);
+    case 'contact.delete': return doContactDelete(args[0] as string);
+    case 'addressbook.list': return doAddressBookList();
+    case 'addressbook.create': return doAddressBookCreate(args[0] as string);
 
     case 'user.getAccounts':   return doUserGetAccounts();
     case 'user.getIdentities': return doUserGetIdentities();

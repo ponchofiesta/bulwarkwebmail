@@ -1,12 +1,12 @@
-import { type NextRequest, NextResponse } from "next/server";
 import createIntlMiddleware from "next-intl/middleware";
+import { type NextRequest, NextResponse } from "next/server";
 import { routing } from "./i18n/routing";
+import { configManager } from "./lib/admin/config-manager";
 import { getEnabledPluginFrameOrigins } from "./lib/admin/csp-frame-origins";
 import {
   APP_FRAME_ORIGINS_COOKIE,
   parseAppFrameOrigins,
 } from "./lib/security/app-frame-origins";
-import { configManager } from "./lib/admin/config-manager";
 import { detectSetupState } from "./lib/setup/state";
 
 const intlMiddleware = createIntlMiddleware(routing);
@@ -32,6 +32,23 @@ export async function proxy(request: NextRequest) {
   const setupState = detectSetupState();
   const pathname = request.nextUrl.pathname;
 
+  // RSC / prefetch / client-navigation requests don't render an HTML document,
+  // so they need no CSP nonce or security headers. Wrapping their responses in
+  // proxy headers made Next's dev router retry them in a tight loop (dozens of
+  // identical GETs per navigation), leaving every client-side navigation stuck
+  // on "Rendering…" with the transition never settling.
+  //
+  // IMPORTANT: only skip the security-header wrapping - these requests must
+  // still flow through the intl middleware below, because next-intl performs
+  // internal rewrites for locale-less paths (e.g. '/' → '/en'). Skipping it
+  // made router.push('/') after login resolve to a 404 RSC payload.
+  const isInternalNavRequest =
+    request.headers.get("RSC") === "1" ||
+    request.headers.has("Next-Router-Prefetch") ||
+    request.headers.has("Next-Router-Segment-Prefetch") ||
+    request.headers.get("sec-fetch-dest") === "empty" ||
+    request.headers.get("sec-fetch-dest") === "worker";
+
   if (setupState === "bootstrap") {
     // Wizard active. Redirect HTML pages to /setup; let asset/internal
     // requests through so the wizard UI can render. Block non-setup APIs
@@ -49,7 +66,10 @@ export async function proxy(request: NextRequest) {
     if (!allowed) {
       if (pathname.startsWith("/api/")) {
         return new NextResponse(
-          JSON.stringify({ error: "setup_required", message: "Initial setup has not completed." }),
+          JSON.stringify({
+            error: "setup_required",
+            message: "Initial setup has not completed.",
+          }),
           { status: 503, headers: { "content-type": "application/json" } },
         );
       }
@@ -94,8 +114,8 @@ export async function proxy(request: NextRequest) {
   const scriptSrc = isSandboxPath
     ? `'self' 'nonce-${nonce}' 'unsafe-eval'`
     : isDev
-    ? `'self' 'nonce-${nonce}' 'unsafe-eval'`
-    : `'self' 'nonce-${nonce}'`;
+      ? `'self' 'nonce-${nonce}' 'unsafe-eval'`
+      : `'self' 'nonce-${nonce}'`;
 
   const connectSrc = isDev ? `'self' http: https: ws: wss:` : `'self' https:`;
 
@@ -147,9 +167,10 @@ export async function proxy(request: NextRequest) {
   ].join("; ");
 
   // Skip intl middleware for routes outside the localized app tree.
-  const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/');
-  const isProtocolRoute = pathname === '/protocol' || pathname.startsWith('/protocol/');
-  const isSetupRoute = pathname === '/setup' || pathname.startsWith('/setup/');
+  const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
+  const isProtocolRoute =
+    pathname === "/protocol" || pathname.startsWith("/protocol/");
+  const isSetupRoute = pathname === "/setup" || pathname.startsWith("/setup/");
   // The plugin sandbox lives in its own root layout under app/(sandbox)/ and
   // is not part of the localized tree. Letting next-intl rewrite the path to
   // /en/plugin-sandbox 404s, which kills the iframe and disables every plugin.
@@ -160,18 +181,30 @@ export async function proxy(request: NextRequest) {
   // doing so can trigger rewrite loops when combined with a proxy basePath.
   const locales = routing.locales as readonly string[];
   const hasLocalePrefix = locales.some(
-    (l) => pathname === `/${l}` || pathname.startsWith(`/${l}/`)
+    (l) => pathname === `/${l}` || pathname.startsWith(`/${l}/`),
   );
 
   let intlResponse: ReturnType<typeof intlMiddleware> | null = null;
-  if (!isAdminRoute && !isProtocolRoute && !isSetupRoute && !isSandboxRoute && !hasLocalePrefix) {
+  if (
+    !isAdminRoute &&
+    !isProtocolRoute &&
+    !isSetupRoute &&
+    !isSandboxRoute &&
+    !hasLocalePrefix
+  ) {
     try {
       intlResponse = intlMiddleware(request);
     } catch (error) {
-      console.error('Locale middleware error:', error);
+      console.error("Locale middleware error:", error);
     }
   }
   const response = intlResponse ?? NextResponse.next();
+
+  // Internal navigation requests (RSC/prefetch/fetch) get no security headers -
+  // see the isInternalNavRequest comment above. Everything else gets the full set.
+  if (isInternalNavRequest) {
+    return response;
+  }
 
   const existing = response.headers.get("x-middleware-override-headers");
   // Expose the nonce AND the request pathname to server components as request
@@ -179,7 +212,9 @@ export async function proxy(request: NextRequest) {
   // so getLocale() can't resolve the active locale there and falls back to the
   // default - emitting <html lang="en"> on e.g. /de pages, which makes browsers
   // offer to "translate this page". The layout reads x-pathname to recover it.
-  const overrides = [existing, "x-nonce", "x-pathname"].filter(Boolean).join(",");
+  const overrides = [existing, "x-nonce", "x-pathname"]
+    .filter(Boolean)
+    .join(",");
   response.headers.set("x-middleware-override-headers", overrides);
   response.headers.set("x-middleware-request-x-nonce", nonce);
   response.headers.set("x-middleware-request-x-pathname", pathname);
@@ -196,7 +231,7 @@ export async function proxy(request: NextRequest) {
   response.headers.set("X-XSS-Protection", "0");
   response.headers.set(
     "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=(), payment=()"
+    "camera=(), microphone=(), geolocation=(), payment=()",
   );
   response.headers.set("Content-Security-Policy", csp);
 

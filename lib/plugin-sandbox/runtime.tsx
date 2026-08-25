@@ -278,10 +278,22 @@ function buildPluginApi(manifest: PluginManifest) {
       ) => callApi('jmap.importRaw', [rawBytes, mailboxRoles, opts]),
     },
     contacts: {
-      get: (contactId: string) => callApi('contact.get', [contactId]) as Promise<ContactCard>,
-      update: (contactId: string, updates: Partial<ContactCard>) => callApi('contact.update', [contactId, updates]),
-      create: (contact: ContactCard) => callApi('contact.create', [contact]) as Promise<string>,
+      get: (contactId: string) => callApi('contact.get', [contactId]) as Promise<ContactCard | null>,
+      update: (contactId: string, updates: Partial<ContactCard>) => callApi('contact.update', [contactId, updates]) as Promise<void>,
+      create: (contact: ContactCard) => callApi('contact.create', [contact]) as Promise<ContactCard>,
       search: (query: string) => callApi('contact.search', [query]) as Promise<ContactCard[]>,
+      /** List contacts, optionally scoped to one address book. (contacts:read) */
+      list: (addressBookId?: string) => callApi('contact.list', [addressBookId]) as Promise<ContactCard[]>,
+      /** Delete a contact by id. (contacts:write) */
+      remove: (contactId: string) => callApi('contact.delete', [contactId]) as Promise<void>,
+    },
+    /**
+     * Address book management. Books are containers of contacts; list/create
+     * map to contacts:read / contacts:write respectively.
+     */
+    addressBooks: {
+      list: () => callApi('addressbook.list', []) as Promise<Array<{ id: string; name: string; isDefault?: boolean }>>,
+      create: (name: string) => callApi('addressbook.create', [name]) as Promise<{ id: string; name: string }>,
     },
     /**
      * Used to alterate files before they are uploaded to server.

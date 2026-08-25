@@ -305,3 +305,49 @@ describe('native keyword extension API', () => {
     }
   });
 });
+/**
+ * Address-book / contact-enumeration gates added for plugins that manage
+ * contacts across books (e.g. google-contacts-sync). list/search are read
+ * gates; delete/book-creation are write gates.
+ */
+describe('contact list/delete + addressbook gates', () => {
+  it('refuses contact.list without contacts:read', async () => {
+    expect(await gateError(plugin(), 'contact.list', [undefined]))
+      .toMatch(/lacks permission "contacts:read"/);
+  });
+
+  it('allows contact.list for a plugin granted contacts:read', async () => {
+    const p = plugin({ permissions: ['contacts:read'], grantedPermissions: ['contacts:read'] });
+    expect(await gateError(p, 'contact.list', ['book-1'])).not.toMatch(GATE_FAILURE);
+  });
+
+  it('refuses contact.delete without contacts:write', async () => {
+    expect(await gateError(plugin(), 'contact.delete', ['c1']))
+      .toMatch(/lacks permission "contacts:write"/);
+  });
+
+  it('allows contact.delete for a plugin granted contacts:write', async () => {
+    const p = plugin({ permissions: ['contacts:write'], grantedPermissions: ['contacts:write'] });
+    expect(await gateError(p, 'contact.delete', ['c1'])).not.toMatch(GATE_FAILURE);
+  });
+
+  it('refuses addressbook.list without contacts:read', async () => {
+    expect(await gateError(plugin(), 'addressbook.list', []))
+      .toMatch(/lacks permission "contacts:read"/);
+  });
+
+  it('allows addressbook.list for a plugin granted contacts:read', async () => {
+    const p = plugin({ permissions: ['contacts:read'], grantedPermissions: ['contacts:read'] });
+    expect(await gateError(p, 'addressbook.list', [])).not.toMatch(GATE_FAILURE);
+  });
+
+  it('refuses addressbook.create without contacts:write', async () => {
+    expect(await gateError(plugin(), 'addressbook.create', ['New book']))
+      .toMatch(/lacks permission "contacts:write"/);
+  });
+
+  it('allows addressbook.create for a plugin granted contacts:write', async () => {
+    const p = plugin({ permissions: ['contacts:write'], grantedPermissions: ['contacts:write'] });
+    expect(await gateError(p, 'addressbook.create', ['New book'])).not.toMatch(GATE_FAILURE);
+  });
+});
